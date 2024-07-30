@@ -1,33 +1,41 @@
-const express = require("express");
-const http = require('http');
-const socketio = require('socket.io');
-const path = require("path");
-const formatMessage = require("./utils/formatMessage.js");
-const {
+import express from "express";
+import http from 'http';
+import {Server} from 'socket.io'
+import path from "path";
+import { fileURLToPath } from 'url';
+import formatMessage from "./utils/formatMessage.js";
+import { setGame,setGameStatus,getGameStatus }  from './utils/game.js';
+import {
   addPlayer,
   getPlayer,
   getAllPlayers,
   removePlayer
-} = require("./utils/players.js")
+}  from "./utils/players.js";
 
 const app = express();
 const server = http.createServer(app); // create the HTTP server using the Express app created on previous line
-const io = socketio(server); // connect Socket.IO to the HTTP server
+const io = new Server(server); // connect Socket.IO to the HTTP server
 
+
+// Create __dirname using import.meta.url
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const publicDirectoryPath = path.join(__dirname, '../public');
 app.use(express.static(publicDirectoryPath));
 
-io.on('connection', socket => { // listen for new connections to Socket.IO
-  
+io.on('connection', socket => {
   console.log('A new player just connected');
-  socket.on("join", ({playerName,room}, callback) => {
+
+  socket.on('join', ({ playerName, room }, callback) => {
     const { error, newPlayer } = addPlayer({ id: socket.id, playerName, room });
+
     if (error) return callback(error.message);
-    callback(); // The callback can be called without data.
+    callback();
 
     socket.join(newPlayer.room);
 
     socket.emit('message', formatMessage('Admin', 'Welcome!'));
+
     socket.broadcast
       .to(newPlayer.room)
       .emit(
@@ -35,50 +43,96 @@ io.on('connection', socket => { // listen for new connections to Socket.IO
         formatMessage('Admin', `${newPlayer.playerName} has joined the game!`)
       );
 
-    // Emit a "room" event to all players to update their Game Info sections
     io.in(newPlayer.room).emit('room', {
       room: newPlayer.room,
       players: getAllPlayers(newPlayer.room),
     });
-
   });
-  // disconnect functionality
-  socket.on("disconnect", () => {
-    console.log("A player disconnected.");
-  
+
+  socket.on('sendMessage', (message, callback) => {
+    const { error, player } = getPlayer(socket.id);
+
+    if (error) return callback(error.message);
+
+    if (player) {
+      io.to(player.room).emit(
+        'message',
+        formatMessage(player.playerName, message)
+      );
+      callback();
+    }
+  });
+
+  socket.on('getQuestion', async (data, callback) => {
+    const { error, player } = getPlayer(socket.id);
+
+    if (error) return callback(error.message);
+
+    if (player) {
+      const game = await setGame();
+      io.to(player.room).emit('question', {
+        playerName: player.playerName,
+        ...game.prompt,
+      });
+    }
+  });
+
+  socket.on('sendAnswer', (answer, callback) => {
+    const { error, player } = getPlayer(socket.id);
+
+    if (error) return callback(error.message);
+
+    if (player) {
+      const { isRoundOver } = setGameStatus({
+        event: 'sendAnswer',
+        playerId: player.id,
+        room: player.room,
+      });
+
+      io.to(player.room).emit('answer', {
+        ...formatMessage(player.playerName, answer),
+        isRoundOver,
+      });
+
+      callback();
+    }
+  });
+
+  socket.on('getAnswer', (data, callback) => {
+    const { error, player } = getPlayer(socket.id);
+
+    if (error) return callback(error.message);
+
+    if (player) {
+      const { correctAnswer } = getGameStatus({
+        event: 'getAnswer',
+      });
+      io.to(player.room).emit(
+        'correctAnswer',
+        formatMessage(player.playerName, correctAnswer)
+      );
+    }
+  });
+
+  socket.on('disconnect', () => {
+    console.log('A player disconnected.');
+
     const disconnectedPlayer = removePlayer(socket.id);
-  
+
     if (disconnectedPlayer) {
       const { playerName, room } = disconnectedPlayer;
       io.in(room).emit(
-        "message",
-        formatMessage("Admin", `${playerName} has left!`)
+        'message',
+        formatMessage('Admin', `${playerName} has left!`)
       );
-  
-      io.in(room).emit("room", {
+
+      io.in(room).emit('room', {
         room,
         players: getAllPlayers(room),
       });
     }
   });
-
-  // chat functionality
-  socket.on("sendMessage", (message, callback) => {
-    const { error, player } = getPlayer(socket.id);
-  
-    if (error) return callback(error.message);
-  
-    if (player) {
-      io.to(player.room).emit(
-        "message",
-        formatMessage(player.playerName, message)
-      );
-      callback(); // invoke the callback to trigger event acknowledgment
-    }
-  });
 });
-
-
 
 const port = process.env.PORT || 8080;
 server.listen(port, () => {
