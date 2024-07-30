@@ -1,5 +1,5 @@
 const players = [];
-const addPlayer = ({id, playerName, room}) => {
+export function addPlayer ({id, playerName, room}){
   if(!playerName || !room){
     return {
       error: new Error("Please enter a player name and room !"),
@@ -26,7 +26,7 @@ const addPlayer = ({id, playerName, room}) => {
 };
 
 // get a player by id
-const getPlayer = (id) => {
+export function getPlayer(id){
   const player = players.find((player)=>player.id === id);
   if(!player){
     return {
@@ -37,12 +37,12 @@ const getPlayer = (id) => {
 };
 
 // Get all the players in the room
-const getAllPlayers = (room) => {
+export function getAllPlayers (room){
   return players.filter((player) => player.room === room);
 };
 
 // Remove a player by id
-const removePlayer = (id) => {
+export function removePlayer(id) {
   return players.find((player, index) => {
     if (player.id === id) {
       return players.splice(index, 1)[0];
@@ -51,10 +51,10 @@ const removePlayer = (id) => {
   });
 };
 
-// Export our helper methods
-module.exports = {
-  addPlayer,
-  getPlayer,
-  getAllPlayers,
-  removePlayer,
-};
+// // Export our helper methods
+// module.exports = {
+//   addPlayer,
+//   getPlayer,
+//   getAllPlayers,
+//   removePlayer,
+// };

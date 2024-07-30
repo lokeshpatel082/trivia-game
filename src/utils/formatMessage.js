@@ -1,4 +1,4 @@
-module.exports = (playerName, text) => {
+export default function formatMessage(playerName, text) {
   return {
     playerName,
     text,
